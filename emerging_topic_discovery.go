@@ -43,180 +43,14 @@ type LocPair struct {
 type EvaluationSummary struct {
 	accuracy float64
 	score    float64
-	realRank int
 	support  int
 }
 
-func g1(q []int, x float64) float64 {
-	T := len(q) - 1
-	result := 0.0
-	for t := 1; t <= T; t++ {
-		dqt := float64(q[t] - q[0])
-		result += dqt * math.Pow(float64(t), x)
-	}
-	return result
-}
-
-func g2(q []int, x float64) float64 {
-	T := len(q) - 1
-	result := 0.0
-	for t := 1; t <= T; t++ {
-		dqt := float64(q[t] - q[0])
-		for s := 1; s <= T; s++ {
-			tss := float64(t * s * s)
-			result += dqt * math.Pow(tss, x) * (math.Log(float64(t)) - math.Log(float64(s)))
-		}
-	}
-	return result
-}
-
-func rootsOfG1(q []int, a float64, b float64, tol float64) []float64 {
-	c1 := 0.5 * (a + b)
-	c21 := 0.5 * (a + c1)
-	c22 := 0.5 * (c1 + b)
-	g1a := g1(q, a)
-	g1b := g1(q, b)
-	g1c1 := g1(q, c1)
-	g1c21 := g1(q, c21)
-	g1c22 := g1(q, c22)
-
-	coef0 := g1a
-	h := b - a
-	coef1 := (4.0*(g1c1-g1a) - (g1b - g1a)) / h
-	hh := h * h
-	coef2 := (2.0*(g1b-g1a) - 4.0*(g1c1-g1a)) / hh
-
-	r := math.Sqrt(math.Abs(g1a) + math.Abs(g1b))
-	agc21 := coef2*(c21-a)*(c21-a) + coef1*(c21-a) + coef0
-	agc22 := coef2*(c22-a)*(c22-a) + coef1*(c22-a) + coef0
-	if math.Abs(agc21-g1c21) > tol*r || math.Abs(agc22-g1c22) > tol*r {
-		if h > 0.1 || g1a*g1b <= 0.0 {
-			chanRoots := make(chan []float64)
-			go func() {
-				chanRoots <- rootsOfG1(q, c1, b, tol)
-			}()
-			return append(rootsOfG1(q, a, c1, tol), (<-chanRoots)...)
-		}
-	} else {
-		if coef2 == 0.0 {
-			if coef1 != 0.0 {
-				root := a - coef0/coef1
-				if root >= a && root < b {
-					return []float64{root}
-				}
-			}
-		} else {
-			delta := coef1*coef1 - 4*coef2*coef0
-			if delta >= 0.0 {
-				sqrtdelta := math.Sqrt(delta)
-				roots := []float64{}
-				root1 := a + 0.5*(-coef1-sqrtdelta)/coef2
-				root2 := a + 0.5*(-coef1+sqrtdelta)/coef2
-				if root1 >= a && root1 < b {
-					roots = append(roots, root1)
-				}
-				if root2 >= a && root2 < b {
-					roots = append(roots, root2)
-				}
-				return roots
-			}
-		}
-	}
-	return []float64{}
-}
-
-func rootsOfG2(q []int, a float64, b float64, tol float64) []float64 {
-	c1 := 0.5 * (a + b)
-	c21 := 0.5 * (a + c1)
-	c22 := 0.5 * (c1 + b)
-	g2a := g2(q, a)
-	g2b := g2(q, b)
-	g2c1 := g2(q, c1)
-	g2c21 := g2(q, c21)
-	g2c22 := g2(q, c22)
-
-	coef0 := g2a
-	h := b - a
-	coef1 := (4.0*(g2c1-g2a) - (g2b - g2a)) / h
-	hh := h * h
-	coef2 := (2.0*(g2b-g2a) - 4.0*(g2c1-g2a)) / hh
-
-	r := math.Sqrt(math.Abs(g2a) + math.Abs(g2b))
-	agc21 := coef2*(c21-a)*(c21-a) + coef1*(c21-a) + coef0
-	agc22 := coef2*(c22-a)*(c22-a) + coef1*(c22-a) + coef0
-	if math.Abs(agc21-g2c21) > tol*r || math.Abs(agc22-g2c22) > tol*r {
-		if h > 0.1 || g2a*g2b <= 0.0 {
-			chanRoots := make(chan []float64)
-			go func() {
-				chanRoots <- rootsOfG2(q, c1, b, tol)
-			}()
-			return append(rootsOfG2(q, a, c1, tol), (<-chanRoots)...)
-		}
-	} else {
-		if coef2 == 0.0 {
-			if coef1 != 0.0 {
-				root := a - coef0/coef1
-				if root >= a && root < b {
-					return []float64{root}
-				}
-			}
-		} else {
-			delta := coef1*coef1 - 4*coef2*coef0
-			if delta >= 0.0 {
-				sqrtdelta := math.Sqrt(delta)
-				roots := []float64{}
-				root1 := a + 0.5*(-coef1-sqrtdelta)/coef2
-				root2 := a + 0.5*(-coef1+sqrtdelta)/coef2
-				if root1 >= a && root1 < b {
-					roots = append(roots, root1)
-				}
-				if root2 >= a && root2 < b {
-					roots = append(roots, root2)
-				}
-				return roots
-			}
-		}
-	}
-	return []float64{}
-}
-
-func f(q []int, c, alpha float64) float64 {
-	result := 0.0
-	T := len(q) - 1
-	for t := 1; t <= T; t++ {
-		delta := float64(q[t]-q[0]) - c*math.Pow(float64(t), alpha)
-		result += delta * delta
-	}
-	return result
-}
-
-func argMinF(q []int, beta, tol float64) (float64, float64) {
-	T := len(q) - 1
-	alphas := []float64{0.0, beta}
-	alphas = append(alphas, rootsOfG1(q, 0.0, beta, tol)...)
-	alphas = append(alphas, rootsOfG2(q, 0.0, beta, tol)...)
-	bestC := 0.0
-	bestAlpha := 0.0
-	bestFVal := f(q, bestC, bestAlpha)
-	for _, alpha := range alphas {
-		sum1 := 0.0
-		sum2 := 0.0
-		for t := 1; t <= T; t++ {
-			sum1 += float64(q[t]-q[0]) * math.Pow(float64(t), alpha)
-			sum2 += math.Pow(float64(t), 2.0*alpha)
-		}
-		c := sum1 / sum2
-		fval := f(q, c, alpha)
-		if fval < bestFVal {
-			bestC = c
-			bestAlpha = alpha
-			bestFVal = fval
-		}
-	}
-	return bestC, bestAlpha
-}
-
 func fourYearSlope(hitsOfYears []int) float64 {
+	return 0.3*float64(hitsOfYears[3]-hitsOfYears[0]) + 0.1*float64(hitsOfYears[2]-hitsOfYears[1])
+}
+
+func fourYearSlopeF(hitsOfYears []float64) float64 {
 	return 0.3*float64(hitsOfYears[3]-hitsOfYears[0]) + 0.1*float64(hitsOfYears[2]-hitsOfYears[1])
 }
 
@@ -735,12 +569,12 @@ func countPairHits(pairMatches map[IDPair]map[int]LocPair, years []int) map[IDPa
 	return pairHits
 }
 
-func hitsOfYear(hitsOfYears map[int]int, year int) float64 {
+func hitsOfYear(hitsOfYears map[int]int, year int) int {
 	hits, exists := hitsOfYears[year]
 	if !exists {
 		hits = 0
 	}
-	return float64(hits)
+	return hits
 }
 
 func computeEmergingness(hitsOfYears map[int]int, toYear int) (float64, int) {
@@ -753,12 +587,16 @@ func computeEmergingness(hitsOfYears map[int]int, toYear int) (float64, int) {
 		}
 		totalSumHits += hits
 	}
-	scarceness := 1.0 / math.Log(sumHits+1.0)
+	scarceness := 1.0 / math.Sqrt(sumHits+1.0)
 
-	// use diff of 2 years to compute how much the topic is becoming frequent
-	sumOfCurrent2Years := hitsOfYear(hitsOfYears, toYear-1) + hitsOfYear(hitsOfYears, toYear)
-	sumOfFulture2Years := hitsOfYear(hitsOfYears, toYear+1) + hitsOfYear(hitsOfYears, toYear+2)
-	futureFrequentness := (sumOfFulture2Years - sumOfCurrent2Years) / (sumOfCurrent2Years + 1.0)
+	// slope of 4 years to compute how much the topic is becoming frequent
+	hitsOf4Years := []int{
+		hitsOfYear(hitsOfYears, toYear-1),
+		hitsOfYear(hitsOfYears, toYear),
+		hitsOfYear(hitsOfYears, toYear+1),
+		hitsOfYear(hitsOfYears, toYear+2),
+	}
+	futureFrequentness := fourYearSlope(hitsOf4Years)
 
 	// definition: emerging = scarce + becoming frequent
 	emergingness := scarceness * futureFrequentness
@@ -766,46 +604,45 @@ func computeEmergingness(hitsOfYears map[int]int, toYear int) (float64, int) {
 }
 
 func predictEmergingness(hitsOfYears map[int]int, toYear int) (float64, float64) {
-	const numRecentYears = 10
-	hitsOfRecentYears := make([]int, numRecentYears)
-	fromYear := toYear - numRecentYears + 1
-	for year := fromYear; year <= toYear; year++ {
-		hitsOfYear, exist := hitsOfYears[year]
-		if !exist {
-			hitsOfYear = 0
-		}
-		hitsOfRecentYears[year-fromYear] = hitsOfYear
+	hitsOfRecentYears := []int{
+		hitsOfYear(hitsOfYears, toYear-6),
+		hitsOfYear(hitsOfYears, toYear-5),
+		hitsOfYear(hitsOfYears, toYear-4),
+		hitsOfYear(hitsOfYears, toYear-3),
+		hitsOfYear(hitsOfYears, toYear-2),
+		hitsOfYear(hitsOfYears, toYear-1),
+		hitsOfYear(hitsOfYears, toYear),
 	}
-
-	c, alpha := argMinF(hitsOfRecentYears, 2.0, 1e-8)
+	slopesOfRecentYears := []float64{
+		fourYearSlope(hitsOfRecentYears[0:4]),
+		fourYearSlope(hitsOfRecentYears[1:5]),
+		fourYearSlope(hitsOfRecentYears[2:6]),
+		fourYearSlope(hitsOfRecentYears[3:7]),
+	}
+	sslope := fourYearSlopeF(slopesOfRecentYears)
 
 	// compute probability of ascent
 	sigma := 0.0
-	for year := fromYear + 1; year <= toYear; year++ {
-		meanOfCurrYear := float64(hitsOfRecentYears[0]) + c*math.Pow(float64(year-fromYear), alpha)
-		meanOfPrevYear := float64(hitsOfRecentYears[0]) + c*math.Pow(float64(year-1-fromYear), alpha)
-		meanOf2Years := meanOfCurrYear + meanOfPrevYear
-		diffOf2Years := float64(hitsOfRecentYears[year-fromYear]+hitsOfRecentYears[year-1-fromYear]) - meanOf2Years
-		sigma += diffOf2Years * diffOf2Years
+	for i := 1; i < 3; i++ {
+		diff := slopesOfRecentYears[i] - slopesOfRecentYears[i-1] - sslope
+		sigma += diff * diff
 	}
-	sigma /= float64(numRecentYears - 1)
-	sigma = math.Sqrt(sigma) + 1e-10
-	mu := float64(hitsOfRecentYears[0]) +
-		c*math.Pow(float64(toYear+1-fromYear), alpha) +
-		float64(hitsOfRecentYears[0]) +
-		c*math.Pow(float64(toYear+2-fromYear), alpha)
-	x := float64(
-		hitsOfRecentYears[numRecentYears-2] + hitsOfRecentYears[numRecentYears-2],
-	)
+	sigma = math.Sqrt(sigma/3.0) + 1e-10
+
+	mu := slopesOfRecentYears[3] + 2.0*sslope
 	ascentProbablity := func() float64 {
-		if x >= mu {
-			return 0.5 - 0.5*math.Erf((x-mu)/(sigma*math.Sqrt2))
+		if 0.0 >= mu {
+			return 0.5 - 0.5*math.Erf((-mu)/(2.0*sigma*math.Sqrt2))
+		} else if hitsOfRecentYears[5] == 0 && hitsOfRecentYears[6] == 0 {
+			return 0.0
+		} else if hitsOfRecentYears[5] == 0 || hitsOfRecentYears[6] == 0 {
+			return 0.25 + 0.25*math.Erf((mu)/(2.0*sigma*math.Sqrt2))
 		} else {
-			return 0.5 + 0.5*math.Erf((mu-x)/(sigma*math.Sqrt2))
+			return 0.5 + 0.5*math.Erf((mu)/(2.0*sigma*math.Sqrt2))
 		}
 	}()
 
-	futureFrequentness := (mu - x) / (x + 1.0)
+	futureFrequentness := mu
 
 	// use sum of hitsOfYears to compute scarceness
 	sumHits := 0.0
@@ -814,7 +651,7 @@ func predictEmergingness(hitsOfYears map[int]int, toYear int) (float64, float64)
 			sumHits += float64(hits)
 		}
 	}
-	scarceness := 1.0 / (math.Log(sumHits+1.0) + 1e-10)
+	scarceness := 1.0 / math.Sqrt(sumHits+1.0)
 
 	// definition: emerging = scarce + becoming frequent
 	emergingness := scarceness * futureFrequentness
@@ -828,14 +665,8 @@ func hyphenedTopic(ontology []OntologyNode, topicID int) string {
 
 func rankByEmergingness(pairHits map[IDPair]map[int]int, ontology []OntologyNode) []BitermPrediction {
 	result := []BitermPrediction{}
-	n := len(pairHits)
-	idx := 0
 	for pair, hitsOfYears := range pairHits {
 		emergingness, ascentProbability := predictEmergingness(hitsOfYears, 2018)
-		idx++
-		if idx%1000 == 0 {
-			fmt.Printf("%d of %d pairs analyzed\n", idx, n)
-		}
 		result = append(result, BitermPrediction{
 			hyphenedTopic(ontology, pair.i),
 			hyphenedTopic(ontology, pair.j),
@@ -860,10 +691,8 @@ func evaluate(fileName string, toYear int, bitermPredict []BitermPrediction, pai
 	// metrics to evaluate: accuracy, recall and support
 	numPairs := len(bitermPredict)
 	summaries := make([]EvaluationSummary, numPairs)
-	ranks := make([]int, numPairs)
 	pairHits := countPairHits(pairMatches, years)
 	for idx, predict := range bitermPredict {
-		ranks[idx] = idx
 		pair := IDPair{predict.topicID1, predict.topicID2}
 		if pair.i > pair.j {
 			log.Fatalf("incorrect topic IDs in pair %v\n", predict)
@@ -872,7 +701,7 @@ func evaluate(fileName string, toYear int, bitermPredict []BitermPrediction, pai
 		if !exists {
 			score := 0.0
 			accuracy := 1.0 - predict.ascentProbablity
-			summaries[idx] = EvaluationSummary{accuracy: accuracy, score: score, realRank: 0, support: 0}
+			summaries[idx] = EvaluationSummary{accuracy: accuracy, score: score, support: 0}
 		} else {
 			score, support := computeEmergingness(hitsOfYears, 2018)
 			accuracy := func() float64 {
@@ -882,54 +711,62 @@ func evaluate(fileName string, toYear int, bitermPredict []BitermPrediction, pai
 					return 1.0 - predict.ascentProbablity
 				}
 			}()
-			summaries[idx] = EvaluationSummary{accuracy: accuracy, score: score, realRank: 0, support: support}
+			summaries[idx] = EvaluationSummary{accuracy: accuracy, score: score, support: support}
 		}
-	}
-	sort.Slice(ranks, func(x, y int) bool {
-		return summaries[ranks[x]].score > summaries[ranks[y]].score
-	})
-	for idx := 0; idx < numPairs; idx++ {
-		summaries[ranks[idx]].realRank = idx
 	}
 
 	topKAccuracies := make([]float64, 30)
+	topKPrecision := make([]float64, 30)
 	topKRecall := make([]float64, 30)
 	topKSupport := make([]float64, 30)
 
 	for k := 100; k <= 3000; k += 100 {
 		sumAccuracy := 0.0
+		sumPrecision := 0.0
 		sumRecall := 0.0
 		sumSupport := 0.0
 		n := k
 		if n > numPairs {
 			n = numPairs
 		}
+		numRealAscents := 0.0
+		numPredAscents := 0.0
 		for idx := 0; idx < n; idx++ {
 			sumAccuracy += summaries[idx].accuracy
-			if summaries[idx].realRank < k {
-				sumRecall += 1.0
+			numPredAscents += bitermPredict[idx].ascentProbablity
+			sumPrecision += bitermPredict[idx].ascentProbablity * summaries[idx].accuracy
+			if summaries[idx].score > 0.0 {
+				sumRecall += summaries[idx].accuracy
+				numRealAscents += 1.0
 			}
 			sumSupport += float64(summaries[idx].support)
 		}
 		topKAccuracies[k/100-1] = sumAccuracy / float64(n)
-		topKRecall[k/100-1] = sumRecall / float64(n)
+		topKPrecision[k/100-1] = (sumPrecision + 1e-10) / (numPredAscents + 1e-10)
+		topKRecall[k/100-1] = (sumRecall + 1e-10) / (numRealAscents + 1e-10)
 		topKSupport[k/100-1] = sumSupport / float64(n)
 	}
 
 	kLine := "k"
 	accuracyLine := "accuracy"
+	precicionLine := "precision"
 	recallLine := "recall"
+	f1scoreLine := "f1score"
 	supportLine := "support"
 	for kid := 0; kid < 30; kid++ {
 		k := (kid + 1) * 100
 		kLine += fmt.Sprintf(",%d", k)
 		accuracyLine += fmt.Sprintf(",%f", topKAccuracies[kid])
+		precicionLine += fmt.Sprintf(",%f", topKPrecision[kid])
 		recallLine += fmt.Sprintf(",%f", topKRecall[kid])
+		f1scoreLine += fmt.Sprintf(",%f", 2.0/(1.0/(topKPrecision[kid]+1e-10)+1.0/(topKRecall[kid]+1e-10)))
 		supportLine += fmt.Sprintf(",%f", topKSupport[kid])
 	}
 	kLine += "\n"
 	accuracyLine += "\n"
+	precicionLine += "\n"
 	recallLine += "\n"
+	f1scoreLine += "\n"
 	supportLine += "\n"
 
 	file, err := os.Create(fileName)
@@ -940,7 +777,9 @@ func evaluate(fileName string, toYear int, bitermPredict []BitermPrediction, pai
 
 	file.WriteString(kLine)
 	file.WriteString(accuracyLine)
+	file.WriteString(precicionLine)
 	file.WriteString(recallLine)
+	file.WriteString(f1scoreLine)
 	file.WriteString(supportLine)
 
 	for idx := 0; idx < 3000 && idx < numPairs; idx++ {
@@ -948,8 +787,7 @@ func evaluate(fileName string, toYear int, bitermPredict []BitermPrediction, pai
 		summary := summaries[idx]
 		file.WriteString("\n")
 		file.WriteString(fmt.Sprintf("Super-Topics: %s(%d) %s(%d)\n", predict.term1, predict.termTopicID1, predict.term2, predict.termTopicID2))
-		file.WriteString(fmt.Sprintf("PredEmerging %f PredRank %d PredAscProb %f PredAcc %f\n", predict.emergingness, idx, predict.ascentProbablity, summary.accuracy))
-		file.WriteString(fmt.Sprintf("RealEmerging %f RealRank %d\n", summary.score, summary.realRank))
+		file.WriteString(fmt.Sprintf("PredEmerging %f RealEmerging %f PredAscProb %f PredAcc %f\n", predict.emergingness, summary.score, predict.ascentProbablity, summary.accuracy))
 
 		titleIDs := []int{}
 		titleYears := []int{}
